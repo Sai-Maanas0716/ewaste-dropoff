@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>E-Waste Drop-off</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      background: #f5f5f5;
+    }
+    h2 { color: #2e7d32; text-align: center; }
+    p  { color: #555; text-align: center; font-size: 14px; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+    .photo-btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #2e7d32;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    #preview {
+      width: 100%;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    #submitBtn {
+      display: none;
+      width: 100%;
+      padding: 14px;
+      background: #1565c0;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #status {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 14px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>♻️ E-Waste Drop-off</h2>
+    <p>Place your item and take a clear photo of it.</p>
+
+    <label>Your Name (optional)</label>
+    <input type="text" id="personName" placeholder="e.g. Ravi Kumar" />
+
+    <label>Department (optional)</label>
+    <input type="text" id="department" placeholder="e.g. CSE, ECE, Admin" />
+
+    <label>Photo of E-Waste Item</label>
+    <input type="file" id="fileInput"
+           accept="image/*" capture="environment"
+           style="display:none"
+           onchange="previewImage(this)" />
+
+    <button class="photo-btn"
+            onclick="document.getElementById('fileInput').click()">
+      📷 Take Photo
+    </button>
+
+    <img id="preview" alt="Preview" />
+
+    <button id="submitBtn" onclick="submitPhoto()">
+      ✅ Submit Drop-off
+    </button>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const IMGBB_API_KEY = "YOUR_IMGBB_API_KEY_HERE";
+    const N8N_WEBHOOK   = "YOUR_N8N_WEBHOOK_URL_HERE";
+
+    function previewImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const preview = document.getElementById("preview");
+        preview.src = e.target.result;
+        preview.style.display = "block";
+        document.getElementById("submitBtn").style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function submitPhoto() {
+      const status = document.getElementById("status");
+      const file   = document.getElementById("fileInput").files[0];
+      const name   = document.getElementById("personName").value || "Anonymous";
+      const dept   = document.getElementById("department").value || "Not specified";
+
+      if (!file) {
+        status.textContent = "Please take a photo first.";
+        return;
+      }
+
+      status.textContent = "⏳ Uploading photo...";
+      document.getElementById("submitBtn").disabled = true;
+
+      try {
+        // Step 1 — Upload to imgBB
+        const formData = new FormData();
+        formData.append("image", file);
+        const imgRes  = await fetch(
+          `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+          { method: "POST", body: formData }
+        );
+        const imgData = await imgRes.json();
+        const imageUrl = imgData.data.url;
+
+        // Step 2 — Send to n8n webhook
+        await fetch(N8N_WEBHOOK, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url  : imageUrl,
+            person_name: name,
+            department : dept,
+            timestamp  : new Date().toLocaleString("en-IN",
+                           { timeZone: "Asia/Kolkata" }),
+            location   : "Block A Drop-off Point"
+          })
+        });
+
+        status.innerHTML =
+          "✅ <strong>Submitted successfully!</strong><br>" +
+          "Thank you. The item has been logged.";
+
+      } catch (err) {
+        status.textContent =
+          "❌ Submission failed. Please try again.";
+        document.getElementById("submitBtn").disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
