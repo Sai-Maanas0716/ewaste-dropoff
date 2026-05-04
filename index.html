@@ -105,8 +105,8 @@
   </div>
 
   <script>
-    const IMGBB_API_KEY = "YOUR_IMGBB_API_KEY_HERE";
-    const N8N_WEBHOOK   = "YOUR_N8N_WEBHOOK_URL_HERE";
+    const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY;
+    const N8N_WEBHOOK   = import.meta.env.VITE_N8N_WEBHOOK_URL;
 
     function previewImage(input) {
       const file = input.files[0];
