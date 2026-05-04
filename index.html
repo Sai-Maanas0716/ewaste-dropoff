@@ -104,9 +104,10 @@
     <div id="status"></div>
   </div>
 
+  <script src="config.js"></script>
   <script>
-    const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY;
-    const N8N_WEBHOOK   = import.meta.env.VITE_N8N_WEBHOOK_URL;
+    const IMGBB_API_KEY = typeof CONFIG !== 'undefined' ? CONFIG.IMGBB_API_KEY : '';
+    const N8N_WEBHOOK   = typeof CONFIG !== 'undefined' ? CONFIG.N8N_WEBHOOK : '';
 
     function previewImage(input) {
       const file = input.files[0];
