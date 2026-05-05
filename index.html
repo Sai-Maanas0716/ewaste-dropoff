@@ -53,6 +53,8 @@
       border-radius: 8px;
       margin-bottom: 16px;
       display: none;
+      max-height: 300px;
+      object-fit: cover;
     }
     #submitBtn {
       display: none;
@@ -64,12 +66,21 @@
       border-radius: 8px;
       font-size: 16px;
       cursor: pointer;
+      font-weight: bold;
     }
     #status {
       text-align: center;
       margin-top: 16px;
       font-size: 14px;
       color: #555;
+    }
+    .success {
+      color: green;
+      font-weight: bold;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -106,12 +117,12 @@
 
   <script src="config.js"></script>
   <script>
-    const IMGBB_API_KEY = typeof CONFIG !== 'undefined' ? CONFIG.IMGBB_API_KEY : '';
     const N8N_WEBHOOK   = typeof CONFIG !== 'undefined' ? CONFIG.N8N_WEBHOOK : '';
 
     function previewImage(input) {
       const file = input.files[0];
       if (!file) return;
+      
       const reader = new FileReader();
       reader.onload = e => {
         const preview = document.getElementById("preview");
@@ -123,109 +134,76 @@
     }
 
     async function submitPhoto() {
-  const status = document.getElementById("status");
-  const file   = document.getElementById("fileInput").files[0];
-  const name   = document.getElementById("personName").value || "Anonymous";
-  const dept   = document.getElementById("department").value || "Not specified";
+      const status = document.getElementById("status");
+      const file = document.getElementById("fileInput").files[0];
+      const name = document.getElementById("personName").value || "Anonymous";
+      const dept = document.getElementById("department").value || "Not specified";
 
-  if (!file) {
-    status.textContent = "Please take a photo first.";
-    return;
-  }
+      if (!file) {
+        status.textContent = "Please take a photo first.";
+        return;
+      }
 
-  status.textContent = "⏳ Uploading photo...";
-  document.getElementById("submitBtn").disabled = true;
+      status.textContent = "⏳ Processing...";
+      document.getElementById("submitBtn").disabled = true;
 
-  try {
-    // Step 1 — Compress image if too large
-    const compressedFile = await compressImage(file);
-    console.log("File size:", compressedFile.size, "bytes");
+      try {
+        // Convert image to base64
+        const base64 = await fileToBase64(file);
 
-    // Step 2 — Upload to imgBB
-    const formData = new FormData();
-    formData.append("image", compressedFile);
-    formData.append("key", IMGBB_API_KEY);
-    
-    const imgRes = await fetch("https://api.imgbb.com/1/upload", {
-      method: "POST",
-      body: formData
-    });
-    
-    const imgData = await imgRes.json();
-    
-    if (!imgData.success) {
-      throw new Error(`imgBB error: ${imgData.error?.message || 'Unknown error'}`);
-    }
-    
-    const imageUrl = imgData.data.url;
-    console.log("Image uploaded:", imageUrl);
+        // Send directly to n8n with base64 image
+        const response = await fetch(N8N_WEBHOOK, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            image_base64: base64,
+            image_name: file.name,
+            person_name: name,
+            department: dept,
+            timestamp: new Date().toLocaleString("en-IN", 
+              { timeZone: "Asia/Kolkata" }),
+            location: "Block A Drop-off Point"
+          })
+        });
 
-    // Step 3 — Send to n8n
-    const n8nRes = await fetch(N8N_WEBHOOK, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url  : imageUrl,
-        person_name: name,
-        department : dept,
-        timestamp  : new Date().toLocaleString("en-IN",
-                       { timeZone: "Asia/Kolkata" }),
-        location   : "Block A Drop-off Point"
-      })
-    });
-
-    if (!n8nRes.ok) {
-      throw new Error(`n8n webhook failed: ${n8nRes.status}`);
-    }
-
-    status.innerHTML =
-      "✅ <strong>Submitted successfully!</strong><br>" +
-      "Thank you. The item has been logged.";
-    
-    // Reset
-    document.getElementById("fileInput").value = "";
-    document.getElementById("preview").style.display = "none";
-    document.getElementById("submitBtn").style.display = "none";
-
-  } catch (err) {
-    console.error("Full error:", err);
-    status.innerHTML =
-      "❌ Submission failed:<br>" + err.message;
-    document.getElementById("submitBtn").disabled = false;
-  }
-}
-
-// Compress image function
-async function compressImage(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target.result;
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-
-        // Reduce size if too large
-        if (width > 1920) {
-          height = (height * 1920) / width;
-          width = 1920;
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
         }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
+        const result = await response.json();
+        console.log("Success:", result);
 
-        canvas.toBlob((blob) => {
-          resolve(new File([blob], file.name, { type: "image/jpeg" }));
-        }, "image/jpeg", 0.7); // 70% quality
-      };
-    };
-  });
-}
+        status.innerHTML = 
+          "<span class='success'>✅ Submitted successfully!</span><br>" +
+          "Thank you. The item has been logged.";
+        
+        // Reset form
+        setTimeout(() => {
+          document.getElementById("fileInput").value = "";
+          document.getElementById("preview").style.display = "none";
+          document.getElementById("submitBtn").style.display = "none";
+          document.getElementById("submitBtn").disabled = false;
+          status.textContent = "";
+        }, 2000);
+
+      } catch (err) {
+        console.error("Error:", err);
+        status.innerHTML = 
+          "<span class='error'>❌ Submission failed</span><br>" + err.message;
+        document.getElementById("submitBtn").disabled = false;
+      }
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
   </script>
 </body>
 </html>
