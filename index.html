@@ -138,24 +138,20 @@
       const file = document.getElementById("fileInput").files[0];
       const name = document.getElementById("personName").value || "Anonymous";
       const dept = document.getElementById("department").value || "Not specified";
-
       if (!file) {
         status.textContent = "Please take a photo first.";
         return;
       }
-
       status.textContent = "⏳ Processing...";
       document.getElementById("submitBtn").disabled = true;
-
       try {
         // Convert image to base64
         const base64 = await fileToBase64(file);
-
-        // Send directly to n8n with base64 image
+        // Send directly without CORS preflight
         const response = await fetch(N8N_WEBHOOK, {
           method: "POST",
           headers: { 
-            "Content-Type": "application/json"
+            "Content-Type": "text/plain"  // Changed to text/plain to avoid OPTIONS
           },
           body: JSON.stringify({
             image_base64: base64,
@@ -163,23 +159,17 @@
             person_name: name,
             department: dept,
             timestamp: new Date().toLocaleString("en-IN", 
-              { timeZone: "Asia/Kolkata" }),
+            { timeZone: "Asia/Kolkata" }),
             location: "Block A Drop-off Point"
           })
         });
-
+        
         if (!response.ok) {
           throw new Error(`Server error: ${response.status}`);
         }
-
-        const result = await response.json();
-        console.log("Success:", result);
-
         status.innerHTML = 
-          "<span class='success'>✅ Submitted successfully!</span><br>" +
-          "Thank you. The item has been logged.";
-        
-        // Reset form
+        "<span class='success'>✅ Submitted successfully!</span><br>" +
+        "Thank you. The item has been logged.";
         setTimeout(() => {
           document.getElementById("fileInput").value = "";
           document.getElementById("preview").style.display = "none";
@@ -187,11 +177,10 @@
           document.getElementById("submitBtn").disabled = false;
           status.textContent = "";
         }, 2000);
-
       } catch (err) {
         console.error("Error:", err);
         status.innerHTML = 
-          "<span class='error'>❌ Submission failed</span><br>" + err.message;
+        "<span class='error'>❌ Submission failed</span><br>" + err.message;
         document.getElementById("submitBtn").disabled = false;
       }
     }
