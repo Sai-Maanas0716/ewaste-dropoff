@@ -104,10 +104,9 @@
     <div id="status"></div>
   </div>
 
-  <script src="config.js"></script>
   <script>
-    const IMGBB_API_KEY = typeof CONFIG !== 'undefined' ? CONFIG.IMGBB_API_KEY : '';
-    const N8N_WEBHOOK   = typeof CONFIG !== 'undefined' ? CONFIG.N8N_WEBHOOK : '';
+    const IMGBB_API_KEY = "YOUR_IMGBB_API_KEY_HERE";
+    const N8N_WEBHOOK   = "YOUR_N8N_WEBHOOK_URL_HERE";
 
     function previewImage(input) {
       const file = input.files[0];
@@ -137,18 +136,28 @@
       document.getElementById("submitBtn").disabled = true;
 
       try {
-        // Step 1 — Upload to imgBB
+        // Step 1 — Upload to imgBB with CORS handling
         const formData = new FormData();
         formData.append("image", file);
-        const imgRes  = await fetch(
+        
+        const imgRes = await fetch(
           `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-          { method: "POST", body: formData }
+          { 
+            method: "POST", 
+            body: formData,
+            mode: 'cors'  // IMPORTANT: Allow CORS
+          }
         );
+        
+        if (!imgRes.ok) {
+          throw new Error(`imgBB upload failed: ${imgRes.status}`);
+        }
+        
         const imgData = await imgRes.json();
         const imageUrl = imgData.data.url;
 
-        // Step 2 — Send to n8n webhook
-        await fetch(N8N_WEBHOOK, {
+        // Step 2 — Send to n8n webhook with CORS handling
+        const n8nRes = await fetch(N8N_WEBHOOK, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -158,16 +167,28 @@
             timestamp  : new Date().toLocaleString("en-IN",
                            { timeZone: "Asia/Kolkata" }),
             location   : "Block A Drop-off Point"
-          })
+          }),
+          mode: 'cors'  // IMPORTANT: Allow CORS
         });
+
+        if (!n8nRes.ok) {
+          throw new Error(`n8n webhook failed: ${n8nRes.status}`);
+        }
 
         status.innerHTML =
           "✅ <strong>Submitted successfully!</strong><br>" +
           "Thank you. The item has been logged.";
+        
+        // Reset form
+        document.getElementById("fileInput").value = "";
+        document.getElementById("preview").style.display = "none";
+        document.getElementById("submitBtn").style.display = "none";
 
       } catch (err) {
-        status.textContent =
-          "❌ Submission failed. Please try again.";
+        console.error("Error:", err);
+        status.innerHTML =
+          "❌ Submission failed:<br>" + err.message + "<br>" +
+          "Please check your internet and try again.";
         document.getElementById("submitBtn").disabled = false;
       }
     }
