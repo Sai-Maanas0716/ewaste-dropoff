@@ -123,76 +123,109 @@
     }
 
     async function submitPhoto() {
-      const status = document.getElementById("status");
-      const file   = document.getElementById("fileInput").files[0];
-      const name   = document.getElementById("personName").value || "Anonymous";
-      const dept   = document.getElementById("department").value || "Not specified";
+  const status = document.getElementById("status");
+  const file   = document.getElementById("fileInput").files[0];
+  const name   = document.getElementById("personName").value || "Anonymous";
+  const dept   = document.getElementById("department").value || "Not specified";
 
-      if (!file) {
-        status.textContent = "Please take a photo first.";
-        return;
-      }
+  if (!file) {
+    status.textContent = "Please take a photo first.";
+    return;
+  }
 
-      status.textContent = "⏳ Uploading photo...";
-      document.getElementById("submitBtn").disabled = true;
+  status.textContent = "⏳ Uploading photo...";
+  document.getElementById("submitBtn").disabled = true;
 
-      try {
-        // Step 1 — Upload to imgBB with CORS handling
-        const formData = new FormData();
-        formData.append("image", file);
-        
-        const imgRes = await fetch(
-          `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-          { 
-            method: "POST", 
-            body: formData,
-            mode: 'cors'  // IMPORTANT: Allow CORS
-          }
-        );
-        
-        if (!imgRes.ok) {
-          throw new Error(`imgBB upload failed: ${imgRes.status}`);
-        }
-        
-        const imgData = await imgRes.json();
-        const imageUrl = imgData.data.url;
+  try {
+    // Step 1 — Compress image if too large
+    const compressedFile = await compressImage(file);
+    console.log("File size:", compressedFile.size, "bytes");
 
-        // Step 2 — Send to n8n webhook with CORS handling
-        const n8nRes = await fetch(N8N_WEBHOOK, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image_url  : imageUrl,
-            person_name: name,
-            department : dept,
-            timestamp  : new Date().toLocaleString("en-IN",
-                           { timeZone: "Asia/Kolkata" }),
-            location   : "Block A Drop-off Point"
-          }),
-          mode: 'cors'  // IMPORTANT: Allow CORS
-        });
-
-        if (!n8nRes.ok) {
-          throw new Error(`n8n webhook failed: ${n8nRes.status}`);
-        }
-
-        status.innerHTML =
-          "✅ <strong>Submitted successfully!</strong><br>" +
-          "Thank you. The item has been logged.";
-        
-        // Reset form
-        document.getElementById("fileInput").value = "";
-        document.getElementById("preview").style.display = "none";
-        document.getElementById("submitBtn").style.display = "none";
-
-      } catch (err) {
-        console.error("Error:", err);
-        status.innerHTML =
-          "❌ Submission failed:<br>" + err.message + "<br>" +
-          "Please check your internet and try again.";
-        document.getElementById("submitBtn").disabled = false;
-      }
+    // Step 2 — Upload to imgBB
+    const formData = new FormData();
+    formData.append("image", compressedFile);
+    formData.append("key", IMGBB_API_KEY);
+    
+    const imgRes = await fetch("https://api.imgbb.com/1/upload", {
+      method: "POST",
+      body: formData
+    });
+    
+    const imgData = await imgRes.json();
+    
+    if (!imgData.success) {
+      throw new Error(`imgBB error: ${imgData.error?.message || 'Unknown error'}`);
     }
+    
+    const imageUrl = imgData.data.url;
+    console.log("Image uploaded:", imageUrl);
+
+    // Step 3 — Send to n8n
+    const n8nRes = await fetch(N8N_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_url  : imageUrl,
+        person_name: name,
+        department : dept,
+        timestamp  : new Date().toLocaleString("en-IN",
+                       { timeZone: "Asia/Kolkata" }),
+        location   : "Block A Drop-off Point"
+      })
+    });
+
+    if (!n8nRes.ok) {
+      throw new Error(`n8n webhook failed: ${n8nRes.status}`);
+    }
+
+    status.innerHTML =
+      "✅ <strong>Submitted successfully!</strong><br>" +
+      "Thank you. The item has been logged.";
+    
+    // Reset
+    document.getElementById("fileInput").value = "";
+    document.getElementById("preview").style.display = "none";
+    document.getElementById("submitBtn").style.display = "none";
+
+  } catch (err) {
+    console.error("Full error:", err);
+    status.innerHTML =
+      "❌ Submission failed:<br>" + err.message;
+    document.getElementById("submitBtn").disabled = false;
+  }
+}
+
+// Compress image function
+async function compressImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        // Reduce size if too large
+        if (width > 1920) {
+          height = (height * 1920) / width;
+          width = 1920;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          resolve(new File([blob], file.name, { type: "image/jpeg" }));
+        }, "image/jpeg", 0.7); // 70% quality
+      };
+    };
+  });
+}
   </script>
 </body>
 </html>
